@@ -7,6 +7,8 @@
 
 @implementation RNSFormSheetPresentationManager {
   RNSFormSheetPresentationState _state;
+  BOOL _waitingForTransition;
+  BOOL _retriedRefusedWait;
 }
 
 - (instancetype)init
@@ -20,6 +22,10 @@
 - (void)updatePresentationIfNeededWithProvider:(id<RNSFormSheetPresentationProvider>)provider
                                     controller:(RNSFormSheetContentController *)controller
 {
+  if (_waitingForTransition) {
+    return;
+  }
+
   BOOL shouldBeOpen = provider.isOpen;
 
   if (shouldBeOpen) {
@@ -33,11 +39,13 @@
                          controller:(RNSFormSheetContentController *)controller
 {
   if (_state != RNSFormSheetPresentationStateDismissed) {
+    _retriedRefusedWait = NO;
     return;
   }
 
   UIWindow *window = provider.hostWindow;
   if (window == nil) {
+    _retriedRefusedWait = NO;
     return;
   }
 
@@ -46,6 +54,11 @@
   if (presentationSourceViewController == nil) {
     RCTLogError(
         @"[RNScreens] Failed to present form sheet: The source view controller cannot be found for target window.");
+    _retriedRefusedWait = NO;
+    return;
+  }
+
+  if ([self waitForTransitionOf:presentationSourceViewController provider:provider controller:controller]) {
     return;
   }
 
@@ -71,12 +84,18 @@
                          controller:(RNSFormSheetContentController *)controller
 {
   if (_state != RNSFormSheetPresentationStatePresented) {
+    _retriedRefusedWait = NO;
     return;
   }
 
   UIViewController *presentingViewController = controller.presentingViewController;
   if (presentingViewController == nil) {
     _state = RNSFormSheetPresentationStateDismissed;
+    _retriedRefusedWait = NO;
+    return;
+  }
+
+  if ([self waitForTransitionOf:controller provider:provider controller:controller]) {
     return;
   }
 
@@ -96,6 +115,45 @@
 
                                                  [controller.delegate sheetControllerDidDismiss:controller];
                                                }];
+}
+
+// UIKit drops a presentation or dismissal asked of a controller that is still appearing or disappearing,
+// such as one being swiped away, without calling its completion; ask again once that transition ends.
+- (BOOL)waitForTransitionOf:(UIViewController *)viewController
+                   provider:(id<RNSFormSheetPresentationProvider>)provider
+                 controller:(RNSFormSheetContentController *)controller
+{
+  id<UIViewControllerTransitionCoordinator> coordinator = viewController.transitionCoordinator;
+  if (coordinator == nil) {
+    _retriedRefusedWait = NO;
+    return NO;
+  }
+
+  _waitingForTransition = YES;
+  __weak auto weakSelf = self;
+  dispatch_block_t resume = ^{
+    auto strongSelf = weakSelf;
+    if (!strongSelf) {
+      return;
+    }
+    strongSelf->_waitingForTransition = NO;
+    [strongSelf updatePresentationIfNeededWithProvider:provider controller:controller];
+  };
+  // A coordinator that refuses the block never calls its completion either.
+  BOOL queued = [coordinator animateAlongsideTransition:nil
+                                             completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+                                               dispatch_async(dispatch_get_main_queue(), resume);
+                                             }];
+  if (queued) {
+    _retriedRefusedWait = NO;
+  } else if (!_retriedRefusedWait) {
+    _retriedRefusedWait = YES;
+    dispatch_async(dispatch_get_main_queue(), resume);
+  } else {
+    // The coordinator refuses until its transition ends, and that transition needs the main queue meanwhile.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 16 * NSEC_PER_MSEC), dispatch_get_main_queue(), resume);
+  }
+  return YES;
 }
 
 - (BOOL)handleNativeDismiss
