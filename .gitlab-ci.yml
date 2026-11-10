@@ -1,0 +1,158 @@
+# Pipelines of sakiori-oss/react-native-screens on GitLab.com. CUSTOM.md describes the project
+# settings they rely on. The fork publishes no releases, so no pipeline tags or publishes anything.
+#
+# - Merge request: the checks named in .git-intake.toml, and ci-scripts. An update that git intake
+#   opens is verified the same way.
+# - Schedule on main: git-intake-sync takes upstream through a merge request.
+#
+# Upstream's GitHub workflows also build the example apps for iOS, Android, tvOS and Windows and
+# run their end-to-end suites; those need the platforms' SDKs and stay with upstream. Jobs run on
+# the group's x86_64 Linux runner, tagged sakiori-oss-linux. Tools are pinned by version and
+# SHA-256 in .gitlab/scripts/install-tools.sh, images by digest.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule"
+  auto_cancel:
+    on_new_commit: interruptible
+
+stages:
+  - check
+
+variables:
+  GIT_DEPTH: "1"
+  # Node 24, which upstream's T3 packaging names.
+  NODE_IMAGE: node:24.22.2-trixie@sha256:5c6e2e57d7dd6652ce6f087ba0328312059d7c77f93baa8751865dbf103f1acb
+  # Yarn's cache inside the project, where the job cache can keep it; excluded from git status,
+  # which the packaging script requires clean.
+  YARN_ENABLE_GLOBAL_CACHE: "false"
+  YARN_CACHE_FOLDER: $CI_PROJECT_DIR/.ci-cache/yarn
+  YARN_ENABLE_PROGRESS_BARS: "false"
+  TOOLS: $CI_PROJECT_DIR/.ci-cache/tools
+  # The git-intake release the schedule installs, with its x86_64-unknown-linux-musl archive's
+  # SHA-256.
+  GIT_INTAKE_VERSION: "0.5.3"
+  GIT_INTAKE_SHA256_X86_64_LINUX: c9cbd2c32e2651454648f163f438865351a28fe395aab773b380d47bc204f90d
+
+default:
+  image: $NODE_IMAGE
+  tags:
+    - sakiori-oss-linux
+  interruptible: true
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - runner_external_dependency_failure
+      - runner_interrupted
+      - stuck_pending_with_matching_runners
+      - stuck_pending_no_matching_runners
+      - no_updates_running
+      - no_updates_canceling
+
+# The runner's clone may lack .git/info, and its owner may differ from the job's user.
+.ignore-ci-cache:
+  script:
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - exclude=$(git rev-parse --git-path info/exclude) && mkdir -p "$(dirname "$exclude")" && echo /.ci-cache/ >> "$exclude"
+
+.check:
+  stage: check
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  before_script:
+    - !reference [.ignore-ci-cache, script]
+    - node --version
+    - yarn install --immutable --mode=skip-build
+  cache:
+    key:
+      files:
+        - yarn.lock
+    paths:
+      - .ci-cache/yarn
+
+lint-js:
+  extends: .check
+  script:
+    - yarn eslint --ext .js,.ts,.tsx src
+
+check-types:
+  extends: .check
+  script:
+    - yarn check-types
+
+check-android-layers:
+  extends: .check
+  script:
+    - yarn check-android-layers
+
+# The tarball T3 Code installs, built as CUSTOM.md describes. The packaging script checks that the
+# upstream base it records is in the history, so the job takes all of it.
+pack:
+  extends: .check
+  variables:
+    GIT_DEPTH: "0"
+  script:
+    - node scripts/pack-t3.mjs "$CI_PROJECT_DIR/.ci-cache/pack"
+    - |
+      record=$(tar -xzOf .ci-cache/pack/*.tgz package/t3-fork.json)
+      case "$record" in
+        *"\"commit\": \"$CI_COMMIT_SHA\""*) echo "$record" ;;
+        *) printf 't3-fork.json does not name %s:\n%s\n' "$CI_COMMIT_SHA" "$record" >&2; exit 1 ;;
+      esac
+
+# The pipeline's scripts: executable in git and shellcheck clean.
+ci-scripts:
+  extends: .check
+  before_script: []
+  cache: []
+  script:
+    - |
+      plain=$(git ls-files -s -- '.gitlab/scripts/*.sh' | grep -v '^100755 ' || true)
+      [ -z "$plain" ] || { printf 'not executable in git (git update-index --chmod=+x):\n%s\n' "$plain" >&2; exit 1; }
+    - .gitlab/scripts/install-tools.sh "$TOOLS" shellcheck
+    - '"$TOOLS/bin/shellcheck" .gitlab/scripts/*.sh'
+
+# The schedule's job pushes and opens merge requests with GITLAB_TOKEN, the token of the group's
+# release bot, whose pushes start pipelines. The variable is scoped to the git-intake
+# environment, which only this job names.
+git-intake-sync:
+  stage: check
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_PROJECT_PATH == "sakiori-oss/react-native-screens"
+  interruptible: false
+  resource_group: git-intake-sync
+  environment:
+    name: git-intake
+    action: prepare
+  variables:
+    GIT_DEPTH: "0"
+    GIT_STRATEGY: clone
+  before_script:
+    - '[ -n "${GITLAB_TOKEN:-}" ] || { echo "GITLAB_TOKEN is not set; CUSTOM.md, Project settings, describes it" >&2; exit 1; }'
+    - !reference [.ignore-ci-cache, script]
+    - .gitlab/scripts/install-tools.sh "$TOOLS" git-intake
+    - export PATH="$TOOLS/bin:$PATH"
+    - git config user.name Sakiori
+    - git config user.email oss@sakiori.app
+    - git remote set-url origin "$CI_PROJECT_URL.git"
+    # The runner's own git configuration, included from the clone's and from the
+    # global one, carries the job token: a rewrite of the server's URLs into ones
+    # with the token, and a credential helper. The job drops both and answers
+    # with GITLAB_TOKEN alone, to this server alone.
+    - export GIT_CONFIG_GLOBAL="$(mktemp)"
+    - git config --local --unset-all include.path || true
+    - git config --unset-all credential.helper || true
+    - git config --add "credential.$CI_SERVER_URL.helper" ''
+    - git config --add "credential.$CI_SERVER_URL.helper" '!f() { echo username=oauth2; echo "password=$GITLAB_TOKEN"; }; f'
+    - |
+      case "$(git remote get-url --push origin)" in
+        *@*) echo "git rewrites the push URL to carry credentials; it must reach the server without them" >&2; exit 1 ;;
+      esac
+      answer=$(printf 'url=%s\n\n' "$CI_PROJECT_URL.git" | GIT_TERMINAL_PROMPT=0 git credential fill | sed -n 's/^password=//p')
+      [ "$answer" = "$GITLAB_TOKEN" ] || { echo "git answers the server with a credential other than GITLAB_TOKEN" >&2; exit 1; }
+  script:
+    - git intake sync

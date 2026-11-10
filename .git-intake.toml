@@ -1,0 +1,18 @@
+integration = "main"
+publish = { remote = "origin", via = "merge-request", queue = "sakiori-merge" }
+install = "yarn install --immutable --mode=skip-build"
+# The JavaScript steps of upstream's .github/workflows/lint.yml (lint-js, and the Node script of
+# lint-android), and the package build of the tarball T3 Code installs. The native builds, the
+# end-to-end suites and the Android Gradle lint need the platforms' SDKs and stay with upstream.
+checks = [
+  { name = "lint-js", run = "yarn eslint --ext .js,.ts,.tsx src" },
+  { name = "check-types", run = "yarn check-types" },
+  { name = "check-android-layers", run = "yarn check-android-layers" },
+  { name = "pack", run = "out=$(mktemp -d) && node scripts/pack-t3.mjs \"$out\" && rm -rf \"$out\"" },
+]
+
+[[upstream]]
+name = "react-native-screens"
+url = "https://github.com/PixPMusic/react-native-screens.git"
+branch = "fix/android-routed-sheet-centering"
+mode = "follow"
