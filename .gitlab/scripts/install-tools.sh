@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs pinned tools into <dir>/bin, each download checked against its SHA-256, with no
-# fallback. Host: x86_64 Linux, the group's Linux runner.
+# fallback. Host: x86_64 Linux, the group's Linux runners.
 #
 # usage: .gitlab/scripts/install-tools.sh <dir> <tool>...
 #   tools: shellcheck, git-intake

@@ -127,7 +127,10 @@ and `.gitlab-ci.yml`, with `NODE_IMAGE`, in the same update. Upstream's
 - `main` protected: push No one, merge Maintainers, force push off. No rule
   matches `git-intake/update`, and merge request pipelines get no protected
   variables or runners.
-- Pipeline variables allowed to no one.
+- Pipeline variables allowed to no one, and no project or group CI/CD variable
+  named `LINUX_RUNNER` or `GIT_STRATEGY`: the workflow rules of `.gitlab-ci.yml`
+  set both to choose a pipeline's runner and its fresh clone, and a variable of
+  that name would override them.
 - `GITLAB_TOKEN`: the group release bot's personal access token (`api`,
   `write_repository`), protected, masked and hidden, environment `git-intake`.
   Replace it before it expires.
@@ -135,9 +138,17 @@ and `.gitlab-ci.yml`, with `NODE_IMAGE`, in the same update. Upstream's
 
 ## Runners
 
-Jobs run on the group's Linux runner (`sakiori-oss-linux`), which also runs the
-update's merge request pipelines with upstream's code, so it is unprivileged
-and holds no credentials. A merge request from a fork outside the group finds
-no runner; a Maintainer runs its pipeline here.
+Jobs run on one of the group's two unprivileged Linux runners, chosen by the
+workflow rules of `.gitlab-ci.yml` from `CI_COMMIT_REF_PROTECTED`, the predicate
+by which GitLab gives a pipeline protected runners, so a protected pipeline
+never falls back to the other one. The schedule's pipeline on `main` runs on
+`sakiori-oss-linux-protected`, which takes jobs of protected refs only, and each
+of its jobs clones a fresh working copy, since `git-intake-sync` holds the bot's
+token there. Every other pipeline, the update's merge request pipelines with
+upstream's code among them, runs on the group's unprotected Linux runner,
+`sakiori-oss-linux`, which holds no credentials. A merge request pipeline gets
+the protected runner only between two protected branches, and `main` is the
+only one. A merge request from a fork outside the group finds no runner; a
+Maintainer runs its pipeline here.
 
 The repository is MIT-licensed; keep upstream's `LICENSE` unchanged.

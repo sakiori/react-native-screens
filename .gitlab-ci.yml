@@ -7,13 +7,27 @@
 #
 # Upstream's GitHub workflows also build the example apps for iOS, Android, tvOS and Windows and
 # run their end-to-end suites; those need the platforms' SDKs and stay with upstream. Jobs run on
-# the group's x86_64 Linux runner, tagged sakiori-oss-linux. Tools are pinned by version and
-# SHA-256 in .gitlab/scripts/install-tools.sh, images by digest.
+# one of the group's two x86_64 Linux runners: a pipeline that GitLab runs for a protected ref, the
+# schedule's on main, on the one tagged sakiori-oss-linux-protected, which takes protected refs
+# only, and every other pipeline, merge request pipelines among them, on the unprotected one tagged
+# sakiori-oss-linux. Tools are pinned by version and SHA-256 in .gitlab/scripts/install-tools.sh,
+# images by digest.
 
 workflow:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule"
+    # Merge request pipelines and the default branch's schedule run; no other pipeline does.
+    - if: $CI_PIPELINE_SOURCE != "merge_request_event" && ($CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH || $CI_PIPELINE_SOURCE != "schedule")
+      when: never
+    # GitLab gives a pipeline protected runners exactly when CI_COMMIT_REF_PROTECTED is true. The
+    # protected runner's jobs, git-intake-sync with the bot's token among them, each clone a fresh
+    # working copy.
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
+      variables:
+        LINUX_RUNNER: sakiori-oss-linux-protected
+        GIT_STRATEGY: clone
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH
+      variables:
+        LINUX_RUNNER: sakiori-oss-linux
   auto_cancel:
     on_new_commit: interruptible
 
@@ -38,7 +52,7 @@ variables:
 default:
   image: $NODE_IMAGE
   tags:
-    - sakiori-oss-linux
+    - $LINUX_RUNNER
   interruptible: true
   retry:
     max: 1
@@ -130,7 +144,6 @@ git-intake-sync:
     action: prepare
   variables:
     GIT_DEPTH: "0"
-    GIT_STRATEGY: clone
   before_script:
     - '[ -n "${GITLAB_TOKEN:-}" ] || { echo "GITLAB_TOKEN is not set; CUSTOM.md, Project settings, describes it" >&2; exit 1; }'
     - !reference [.ignore-ci-cache, script]
