@@ -2,16 +2,16 @@
 
 `sakiori-oss/react-native-screens` is a downstream fork of
 [react-native-screens](https://github.com/software-mansion/react-native-screens)
-as T3 Code's mobile client takes it: it follows the branch of
-[PixPMusic/react-native-screens](https://github.com/PixPMusic/react-native-screens)
-that T3 Code's `5.0.0-t3.N` tarballs are built from. Sakiori's mobile client
-installs the package from a tarball kept in its own repository and changes that
-tarball only through this fork, never with a package-manager patch, which the
-next tarball would drop without a trace. The fork carries its fixes in the
-package's own code and sends nothing upstream; a downstream change is dropped
-only when upstream fixes the same thing itself. This file holds the rules for
-maintaining the fork that the repository itself does not show. What a change
-does and why is in its commit.
+as T3 Code's mobile client takes it: it follows the release tags of
+[pingdotgg/react-native-screens](https://github.com/pingdotgg/react-native-screens),
+T3 Code's own fork, that its `5.0.0-t3.N` tarballs are built from. Sakiori's
+mobile client installs the package from a tarball kept in its own repository and
+changes that tarball only through this fork, never with a package-manager patch,
+which the next tarball would drop without a trace. The fork carries its fixes in
+the package's own code and sends nothing upstream; a downstream change is
+dropped only when upstream fixes the same thing itself. This file holds the
+rules for maintaining the fork that the repository itself does not show. What a
+change does and why is in its commit.
 
 ## Downstream changes
 
@@ -106,10 +106,11 @@ change intends and what the downstream change guarantees. When upstream fixes a
 defect a downstream change fixes, the update takes upstream's fix and drops the
 downstream code.
 
-The followed branch is the one that carries T3 Code's `t3-v5.0.0-t3.N` release
-tags. When T3 Code's tarballs come from another branch, change `branch` in
-`.git-intake.toml` on its own merge request; `git intake branches` lists the
-upstream's branches.
+An update takes the newest of T3 Code's `t3-v5.0.0-t3.N` release tags on the
+followed branch, `t3/main`, which holds them all, and not the branch's tip,
+which may run ahead of a release. When T3 Code tags its releases on a branch
+`t3/main` does not contain, change `branch` in `.git-intake.toml` on its own
+merge request; `git intake branches` lists the upstream's branches.
 
 The checks run the JavaScript steps of upstream's `.github/workflows/lint.yml`
 and the tarball build. When an update changes those steps, the Node version

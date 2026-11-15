@@ -13,6 +13,10 @@ checks = [
 
 [[upstream]]
 name = "react-native-screens"
-url = "https://github.com/PixPMusic/react-native-screens.git"
-branch = "fix/android-routed-sheet-centering"
+url = "https://github.com/pingdotgg/react-native-screens.git"
+branch = "t3/main"
 mode = "follow"
+# An update takes the newest of T3 Code's release tags, the commits its 5.0.0-t3.N tarballs are
+# built from.
+tags = "t3-v*"
+prereleases = true
