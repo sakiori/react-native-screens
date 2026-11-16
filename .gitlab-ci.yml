@@ -7,11 +7,12 @@
 #
 # Upstream's GitHub workflows also build the example apps for iOS, Android, tvOS and Windows and
 # run their end-to-end suites; those need the platforms' SDKs and stay with upstream. Jobs run on
-# one of the group's two x86_64 Linux runners: a pipeline that GitLab runs for a protected ref, the
+# one of the group's x86_64 Linux runners: a pipeline that GitLab runs for a protected ref, the
 # schedule's on main, on the one tagged sakiori-oss-linux-protected, which takes protected refs
-# only, and every other pipeline, merge request pipelines among them, on the unprotected one tagged
-# sakiori-oss-linux. Tools are pinned by version and SHA-256 in .gitlab/scripts/install-tools.sh,
-# images by digest.
+# only, the merge queue's pipelines, which sakiori-merge starts for a head it rebased, on the
+# unprotected one tagged sakiori-oss-queue, and every other pipeline, the other merge request
+# pipelines among them, on the unprotected one tagged sakiori-oss-linux. Tools are pinned by
+# version and SHA-256 in .gitlab/scripts/install-tools.sh, images by digest.
 
 workflow:
   rules:
@@ -25,6 +26,11 @@ workflow:
       variables:
         LINUX_RUNNER: sakiori-oss-linux-protected
         GIT_STRATEGY: clone
+    # The merge queue's pipeline, of a head the queue rebased and lands on success, runs on slots
+    # no other pipeline takes, so a landing never waits behind other merge requests' checks.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $GITLAB_USER_LOGIN == "sakiori-merge"
+      variables:
+        LINUX_RUNNER: sakiori-oss-queue
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH
       variables:
         LINUX_RUNNER: sakiori-oss-linux

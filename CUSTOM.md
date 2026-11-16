@@ -139,14 +139,16 @@ and `.gitlab-ci.yml`, with `NODE_IMAGE`, in the same update. Upstream's
 
 ## Runners
 
-Jobs run on one of the group's two unprivileged Linux runners, chosen by the
+Jobs run on one of the group's unprivileged Linux runners, chosen by the
 workflow rules of `.gitlab-ci.yml` from `CI_COMMIT_REF_PROTECTED`, the predicate
 by which GitLab gives a pipeline protected runners, so a protected pipeline
-never falls back to the other one. The schedule's pipeline on `main` runs on
-`sakiori-oss-linux-protected`, which takes jobs of protected refs only, and each
-of its jobs clones a fresh working copy, since `git-intake-sync` holds the bot's
-token there. Every other pipeline, the update's merge request pipelines with
-upstream's code among them, runs on the group's unprotected Linux runner,
+never falls back to an unprotected one. The schedule's pipeline on `main` runs
+on `sakiori-oss-linux-protected`, which takes jobs of protected refs only, and
+each of its jobs clones a fresh working copy, since `git-intake-sync` holds the
+bot's token there. The merge queue's pipelines, which `sakiori-merge` starts for
+a head it rebased, run on `sakiori-oss-queue`, unprotected like
+`sakiori-oss-linux`, on slots no other pipeline takes. Every other pipeline, the
+update's merge request pipelines with upstream's code among them, runs on
 `sakiori-oss-linux`, which holds no credentials. A merge request pipeline gets
 the protected runner only between two protected branches, and `main` is the
 only one. A merge request from a fork outside the group finds no runner; a
